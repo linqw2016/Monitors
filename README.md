@@ -22,12 +22,3 @@ A set of system health monitors
     pip install dnspython
     pip install requests
     ```
-
-3. **Run the scripts**:
-    - To submit a job:
-      ```bash
-      python ProbSubmitter.py
-      ```
-
-## Configuration
-Update the `config.yaml` file with your job configuration
