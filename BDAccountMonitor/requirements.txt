@@ -1,0 +1,6 @@
+requests
+dnspython
+asyncio
+urllib3
+json
+datetime
