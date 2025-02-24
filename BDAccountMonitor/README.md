@@ -9,6 +9,7 @@ BDAccountMonitor
 ├── src
 │   ├── probe.py          # Logic for probing accounts and handling incidents
 │   ├── bd_account_monitor.py  # Manages monitoring of multiple accounts
+|   ├── config.json       # Configuration file for account monitoring
 │   └── utils.py          # Utility functions for retries and asynchronous handling
 ├── requirements.txt      # Project dependencies
 ├── .gitignore            # Files and directories to ignore in Git

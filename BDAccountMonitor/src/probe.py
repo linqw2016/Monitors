@@ -10,6 +10,7 @@ from xportal.icm import IncidentCreationResult
 import asyncio
 import uuid
 import time
+import ssl
 
 class HostSSLContext(ssl.SSLContext):
     def __new__(cls, hostname):
@@ -38,7 +39,7 @@ class HostHeaderSSLAdapter(HTTPAdapter):
 
         return super(HostHeaderSSLAdapter, self).send(request, **kwargs)
 
-async def create_incident(title, summary):
+async def create_incident(account, title, summary):
     now = datetime.datetime.utcnow()
     body = {
         "Status": "Active",
@@ -73,30 +74,34 @@ def resolve_cname_recursively(domain, resolver=dns.resolver.Resolver()):
         cname = next_cname
     return cname
 
-async def probe_accounts(accounts, time_to_probe_in_seconds):
-    session = requests.Session()
-    session.mount('https://', HostHeaderSSLAdapter())
+class Probe:
+    def __init__(self, account, time_to_probe_in_seconds):
+        self.account = account
+        self.time_to_probe_in_seconds = time_to_probe_in_seconds
 
-    start_time = time.perf_counter()
-    cnames = dict()
-    ingest_data = []
-    total_probe = 0
-    failed_probe = 0
-    incident_id = None
+    async def probe_account(self):
+        session = requests.Session()
+        session.mount('https://', HostHeaderSSLAdapter())
 
-    while time.perf_counter() - start_time < time_to_probe_in_seconds:
-        timestamp = datetime.datetime.now(datetime.timezone.utc)
-        request_id = uuid.UUID(int=0)
-        status_code = -1
-        error_detail = ""
-        per_request_start_time = time.perf_counter()
-        url = ""
-        final_cname = ""
-        ip_address = ""
+        start_time = time.perf_counter()
+        cnames = dict()
+        ingest_data = []
+        total_probe = 0
+        failed_probe = 0
+        incident_id = None
 
-        for account in accounts:
+        while time.perf_counter() - start_time < self.time_to_probe_in_seconds:
+            timestamp = datetime.datetime.now(datetime.timezone.utc)
+            request_id = uuid.UUID(int=0)
+            status_code = -1
+            error_detail = ""
+            per_request_start_time = time.perf_counter()
+            url = ""
+            final_cname = ""
+            ip_address = ""
+
             try:
-                final_cname = resolve_cname_recursively(account)
+                final_cname = resolve_cname_recursively(self.account)
                 ip_address = get_a(final_cname)
                 print(f"Final CNAME: {final_cname}, IP address: {ip_address}")
                 url = f"https://{ip_address}/bdprobe?"
@@ -109,7 +114,7 @@ async def probe_accounts(accounts, time_to_probe_in_seconds):
                     else:
                         cnames[final_cname][ip_address] += 1
 
-                response = session.head(url, headers={"Connection": "close", "Host": account}, timeout=10)
+                response = session.head(url, headers={"Connection": "close", "Host": self.account}, timeout=10)
                 request_id = response.headers.get("x-ms-request-id", request_id)
                 status_code = response.status_code
                 print(f"HEAD request to {url} succeeded with status code {response.status_code}, {request_id}")
@@ -121,10 +126,10 @@ async def probe_accounts(accounts, time_to_probe_in_seconds):
 
             total_probe += 1
             per_request_elapsed_time = time.perf_counter() - per_request_start_time
-            ingest_data.append([timestamp, account, url, request_id, status_code, per_request_elapsed_time, error_detail, final_cname, ip_address])
+            ingest_data.append([timestamp, self.account, url, request_id, status_code, per_request_elapsed_time, error_detail, final_cname, ip_address])
 
             if not incident_id and failed_probe >= 10:
-                incident = await create_incident(f"Connectivity issue with account {account}", ingest_data)
+                incident = await create_incident(f"Connectivity issue with account {self.account}", ingest_data)
                 incident_id = incident.incident_id
                 print(f"Created incident {incident_id}")
 
@@ -132,4 +137,4 @@ async def probe_accounts(accounts, time_to_probe_in_seconds):
             if remaining_time > 0:
                 time.sleep(remaining_time)
 
-    print(cnames)
+        print(cnames)
